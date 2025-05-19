@@ -1,0 +1,11 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated files
+output.musicxml
+output.mid
+output_teaser.png
