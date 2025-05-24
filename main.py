@@ -49,5 +49,5 @@ async def process_sheet_music(image: UploadFile = File(...)):
 if __name__ == "__main__":
     import uvicorn
     # Run the FastAPI app
-    uvicorn.run(app, host="localhost", port=8000)
-    print("Starting FastAPI server on http://localhost:8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("Starting FastAPI server on http://0.0.0.0:8000")
