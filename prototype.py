@@ -13,7 +13,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # take the current directory as the working directory
 path = os.getcwd()
 
-output_xml_path = os.path.join(UPLOAD_FOLDER, "output.musicxml")
+output_xml_path = "output.musicxml"
 
 def preprocess_image(image_path: str):
     """
