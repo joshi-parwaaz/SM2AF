@@ -41,3 +41,6 @@ urllib3
 webcolors
 opencv-python
 onnxruntime
+fastapi
+uvicorn
+python-multipart

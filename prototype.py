@@ -3,17 +3,32 @@ import subprocess
 import pygame
 from music21 import converter, midi
 import sys
+from PIL import Image, ImageOps
+from fastapi import FastAPI, File, UploadFile
+
+# Define paths
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # take the current directory as the working directory
 path = os.getcwd()
 
-# Path to the image you want to process
-sheet_music_image_path = os.path.join(path, "input.png")
-print(f"Processing sheet music image at: {sheet_music_image_path}")
-output_xml_path = "output.musicxml"
+output_xml_path = os.path.join(UPLOAD_FOLDER, "output.musicxml")
+
+def preprocess_image(image_path: str):
+    """
+    Preprocess the image if necessary (e.g., resizing, converting to grayscale).
+    This function can be expanded based on specific requirements.
+    """
+    img = Image.open(image_path).convert("L")  # Grayscale
+    img = ImageOps.autocontrast(img)            # Auto-contrast
+    preprocessed_path = os.path.join(UPLOAD_FOLDER, "preprocessed.png")
+    img.save(preprocessed_path)
+    print(f"Preprocessed image saved at: {preprocessed_path}")
+    return preprocessed_path
 
 # Function to process the sheet music image using OMER
-def process_sheet_music_image(image_path):
+def process_sheet_music_image(image_path: str):
     try:
         # Command to run the oemer tool and generate MusicXML
         command = f'oemer "{image_path}" -o {output_xml_path}'
@@ -28,7 +43,7 @@ def play_midi(midi_file):
         print(f"Playing MIDI file on Windows: {midi_file}")
         os.startfile(midi_file)
     else:
-        subprocess.run(["open", midi_file]) 
+        subprocess.run(["open", midi_file])
 
 # Convert MusicXML to MIDI using music21
 def convert_musicxml_to_midi(musicxml_file, midi_file):
@@ -38,21 +53,3 @@ def convert_musicxml_to_midi(musicxml_file, midi_file):
         print(f"Successfully converted MusicXML to MIDI: {midi_file}")
     except Exception as e:
         print(f"Error converting MusicXML to MIDI: {e}")
-
-# Main function
-def main():
-    # Process sheet music image to generate MusicXML
-    # process_sheet_music_image(sheet_music_image_path)
-
-    # Check if the MusicXML file was created successfully
-    if os.path.exists(output_xml_path):
-        # Convert the generated MusicXML to MIDI
-        convert_musicxml_to_midi(output_xml_path, "output.mid")
-
-        # Play the resulting MIDI file
-        play_midi("output.mid")
-    else:
-        print(f"Error: {output_xml_path} was not created. Cannot continue.")
-
-if __name__ == "__main__":
-    main()
