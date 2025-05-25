@@ -4,7 +4,6 @@ import pygame
 from music21 import converter, midi
 import sys
 from PIL import Image, ImageOps
-from fastapi import FastAPI, File, UploadFile
 
 # Define paths
 UPLOAD_FOLDER = 'uploads'

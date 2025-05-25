@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from prototype import preprocess_image, process_sheet_music_image, convert_musicxml_to_midi, play_midi, UPLOAD_FOLDER
+from src.prototype import *
 import os
 
 app = FastAPI()
