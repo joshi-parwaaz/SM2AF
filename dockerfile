@@ -1,24 +1,43 @@
-FROM python:3.10-slim
+ARG PYTHON_VERSION=3.12.4
+FROM python:${PYTHON_VERSION}-slim as base
+
+# Prevents Python from writing pyc files.
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Keeps Python from buffering stdout and stderr to avoid situations where
+# the application crashes without emitting any logs due to buffering.
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Create a non-privileged user that the app will run under.
+# See https://docs.docker.com/go/dockerfile-user-best-practices/
+ARG UID=10001
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    appuser
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Download dependencies as a separate step to take advantage of Docker's caching.
+# Leverage a cache mount to /root/.cache/pip to speed up subsequent builds.
+# Leverage a bind mount to requirements.txt to avoid having to copy them into
+# into this layer.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=requirements.txt,target=requirements.txt \
+    python -m pip install -r requirements.txt
 
-# ignore all files in the uploads folder
-RUN find . -path "uploads/*" -delete
+# Switch to the non-privileged user to run the application.
+USER appuser
 
-# ignore all files in the .git folder
-RUN find . -path ".git/*" -delete
+# Copy the source code into the container.
+COPY . .
 
-# ignore all files in the .venv folder
-RUN find . -path ".venv/*" -delete
-
-# ignore all files in the __pycache__ folder
-RUN find . -path "__pycache__/*" -delete
-
-
+# Expose the port that the application listens on.
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application.
+CMD uvicorn main:app --host 0.0.0.0 --port 8000
