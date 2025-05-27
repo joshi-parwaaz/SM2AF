@@ -34,7 +34,7 @@ async def process_sheet_music(image: UploadFile = File(...)):
     preprocessed_path = preprocess_image(temp_image_path)
     
     # Process sheet music image to generate MusicXML
-    # process_sheet_music_image(preprocessed_path)
+    process_sheet_music_image(preprocessed_path)
 
     output_xml_path = "output.musicxml"
     output_midi_path = "output.mid"
