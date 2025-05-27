@@ -44,3 +44,4 @@ onnxruntime
 fastapi
 uvicorn
 python-multipart
+fluidsynth

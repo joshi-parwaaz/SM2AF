@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Download, Upload, Camera, Play } from "lucide-react";
+import { postData } from "@/api/backend";
 
 // Company logo image URL
 const LOGO_URL = "/lovable-uploads/2eba8883-20bf-430c-bfba-dee12fe78063.png";
@@ -24,11 +25,17 @@ export default function SM2AFUploader() {
     }
   };
 
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('image/')) {
       setImage(file);
+
+      // call the backend api
+      const response = await postData(file);
+
+      console.log(response);
+
       setError(null);
     }
   };

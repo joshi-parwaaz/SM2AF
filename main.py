@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from src.prototype import *
 import os
 
@@ -20,7 +21,7 @@ def read_root():
 @app.post("/process-sheet-music")
 async def process_sheet_music(image: UploadFile = File(...)):
     """
-    Endpoint to process a sheet music image and return the MusicXML path.
+    Endpoint to process a sheet music image and return the MIDI file.
     """
     # Save the uploaded file temporarily
     temp_image_path = os.path.join(UPLOAD_FOLDER, "temp_upload.png")
@@ -40,8 +41,13 @@ async def process_sheet_music(image: UploadFile = File(...)):
     # Check if the MusicXML file was created successfully
     if os.path.exists(output_xml_path):
         convert_musicxml_to_midi(output_xml_path, output_midi_path)
-        play_midi(output_midi_path)
-        return {"message": "MusicXML generated successfully", "musicxml_path": output_xml_path}
+        
+        # Return the MIDI file directly
+        return FileResponse(
+            path=output_midi_path,
+            media_type='audio/midi',
+            filename='output.mid'
+        )
     else:
         return {"error": "MusicXML generation failed"}
 
