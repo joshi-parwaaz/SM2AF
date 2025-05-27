@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Download, Upload, Camera, Play } from "lucide-react";
 import { postData } from "@/api/backend";
-
 // Company logo image URL
 const LOGO_URL = "/lovable-uploads/2eba8883-20bf-430c-bfba-dee12fe78063.png";
 
@@ -14,6 +13,7 @@ export default function SM2AFUploader() {
   const [showCamera, setShowCamera] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<any>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -97,26 +97,64 @@ export default function SM2AFUploader() {
       formData.append("image", image);
       
       // Call the backend API
-      const response = await fetch("http://localhost:8000/process-sheet-music", {
+      // Determine API URL based on environment
+      const apiUrl = import.meta.env.PROD 
+        ? "/api/process-sheet-music"
+        : "http://localhost:8000/process-sheet-music";
+      
+      console.log(`Submitting image to: ${apiUrl}`);  
+      const response = await fetch(apiUrl, {
         method: "POST",
         body: formData,
       });
       
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
+      console.log('Response received from server');
+      const resultData = await response.json();
+      console.log('Response data:', resultData);
+      
+      // Always process audio data even if there's an error
+      let audioFormat = 'unknown';
+      let audioBlob;
+      
+      if (resultData.wav_data) {
+        console.log('Using WAV data for audio playback');
+        audioFormat = 'wav';
+        const byteString = atob(resultData.wav_data);
+        const arrayBuffer = new ArrayBuffer(byteString.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < byteString.length; i++) {
+          uint8Array[i] = byteString.charCodeAt(i);
+        }
+        audioBlob = new Blob([uint8Array], { type: 'audio/wav' });
+        setAudioUrl(URL.createObjectURL(audioBlob));
+      } else if (resultData.midi_data) {
+        console.log('Using MIDI data for audio playback');
+        audioFormat = 'midi';
+        const byteString = atob(resultData.midi_data);
+        const arrayBuffer = new ArrayBuffer(byteString.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < byteString.length; i++) {
+          uint8Array[i] = byteString.charCodeAt(i);
+        }
+        audioBlob = new Blob([uint8Array], { type: 'audio/midi' });
+        setAudioUrl(URL.createObjectURL(audioBlob));
+      } else {
+        console.log('No audio data received, using placeholder audio');
+        audioFormat = 'placeholder';
+        audioBlob = new Blob([new ArrayBuffer(1024)], { type: 'audio/wav' });
+        setAudioUrl(URL.createObjectURL(audioBlob));
       }
       
-      const result = await response.json();
-      
-      if (result.error) {
-        throw new Error(result.error);
+      setResult({
+        ...resultData,
+        audioFormat,
+        fileSize: audioBlob ? audioBlob.size : 0
+      });
+
+      // Check for error after setting up audio
+      if (!response.ok || resultData.error) {
+        throw new Error(resultData.error || `Server error: ${response.status}`);
       }
-      
-      // For now, we'll create a placeholder audio since the backend generates MIDI
-      // In a real implementation, you'd want to convert the MIDI to audio format
-      // or modify the backend to return audio directly
-      const audioBlob = new Blob([new ArrayBuffer(1024)], { type: 'audio/wav' });
-      setAudioUrl(URL.createObjectURL(audioBlob));
       
     } catch (error) {
       console.error("Conversion error:", error);
@@ -152,9 +190,10 @@ export default function SM2AFUploader() {
           
           {/* Drag-and-drop uploader */}
           <div
-            onDrop={handleDrop}
-            onDragOver={e => e.preventDefault()}
+            onDrop={loading ? undefined : handleDrop}
+            onDragOver={loading ? undefined : (e => e.preventDefault())}
             className={`p-8 rounded-2xl border-2 border-dashed transition
+              ${loading ? "opacity-50 cursor-not-allowed" : ""}
               ${image ? "border-green-500 bg-gradient-to-r from-green-900/30 to-purple-900/30" : "border-purple-600 bg-black/60"}
               text-center hover:border-purple-400 relative`}
           >
@@ -180,27 +219,23 @@ export default function SM2AFUploader() {
               <Input
                 type="file"
                 accept="image/*"
-                onChange={handleImageUpload}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                onChange={loading ? undefined : handleImageUpload}
+                disabled={loading}
+                className={`absolute inset-0 w-full h-full opacity-0 ${loading ? "cursor-not-allowed" : "cursor-pointer"}`}
                 aria-label="Upload sheet music"
               />
               <Button
                 type="button"
-                className="w-full bg-black/60 border-purple-700 border-2 text-white hover:bg-purple-900/40 focus:ring-2 focus:ring-purple-500 transition py-2 px-4 rounded-md"
+                className={`w-full bg-black/60 border-purple-700 border-2 text-white hover:bg-purple-900/40 focus:ring-2 focus:ring-purple-500 transition py-2 px-4 rounded-md ${loading ? "opacity-50" : ""}`}
                 style={{ pointerEvents: 'none' }}
+                disabled={loading}
               >
                 {!image ? "Choose File - No file selected" : `Choose File - ${image.name}`}
               </Button>
             </div>
-            
-            {image && (
-              <div className="absolute right-4 bottom-2 text-green-400 text-xs font-semibold animate-pulse">
-                ✔️ Image loaded
-              </div>
-            )}
           </div>
           
-          {/* Camera */}
+          {/* Camera controls */}
           {showCamera ? (
             <div className="flex flex-col items-center gap-3">
               <video
@@ -211,8 +246,9 @@ export default function SM2AFUploader() {
                 style={{ maxWidth: '100%', height: 'auto' }}
               />
               <Button
-                onClick={captureImage}
-                className="bg-gradient-to-r from-purple-700 to-purple-500 hover:from-purple-800 hover:to-purple-600 font-semibold"
+                onClick={loading ? undefined : captureImage}
+                disabled={loading}
+                className={`bg-gradient-to-r from-purple-700 to-purple-500 hover:from-purple-800 hover:to-purple-600 font-semibold ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
                 type="button"
               >
                 <Camera className="mr-2 h-5 w-5" />
@@ -220,17 +256,18 @@ export default function SM2AFUploader() {
               </Button>
               <Button
                 variant="ghost"
-                onClick={stopCamera}
-                type="button"
-                className="text-gray-400 hover:text-white transition"
+                onClick={loading ? undefined : stopCamera}
+                disabled={loading}
+                className={`text-gray-400 hover:text-white transition ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 Cancel
               </Button>
             </div>
           ) : (
             <Button
-              onClick={startCamera}
-              className="flex items-center gap-2 justify-center w-full bg-purple-800 hover:bg-purple-700/90 transition font-semibold shadow mb-2"
+              onClick={loading ? undefined : startCamera}
+              disabled={loading}
+              className={`flex items-center gap-2 justify-center w-full bg-purple-800 hover:bg-purple-700/90 transition font-semibold shadow mb-2 ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
               type="button"
             >
               <Camera className="h-5 w-5" /> Use Camera
@@ -247,32 +284,57 @@ export default function SM2AFUploader() {
             <Upload className="mr-2 h-5 w-5" />
             {loading ? "Converting..." : "Convert to Audio"}
           </Button>
-          
+
           {/* Audio preview and download */}
           {audioUrl && (
             <div className="transition-all animate-in fade-in">
-              <h2 className="text-center text-lg font-semibold text-green-400 mb-2">Conversion Complete!</h2>
-              <audio controls src={audioUrl} className="w-full rounded-lg mb-3 bg-black" />
-              <div className="flex flex-row gap-4 justify-center">
-                <a
-                  href={audioUrl}
-                  download="output.wav"
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-purple-700 to-purple-500 hover:from-purple-800 hover:to-purple-600 text-white shadow transition"
-                >
-                  <Download className="h-5 w-5" />
-                  Download Audio
-                </a>
-                <Button
-                  onClick={() => {
-                    const audio = document.querySelector("audio");
-                    audio?.play();
-                  }}
-                  className="flex items-center gap-2 bg-black/60 text-purple-300 hover:text-purple-100 border border-purple-800"
-                  type="button"
-                >
-                  <Play className="h-5 w-5" />
-                  Play Again
-                </Button>
+              <h2 className="text-center text-lg font-semibold text-green-400 mb-2">
+                {error ? "Conversion Failed - Preview Available" : "Conversion Complete!"}
+              </h2>
+              
+              {/* Audio format and conversion details */}
+              <div className="text-center space-y-2 mb-4">
+                {/* Format badge */}
+                <div className="text-xs text-purple-300">
+                  {result?.audioFormat === 'wav' && (
+                    <span className="bg-green-900/30 border border-green-500/40 px-2 py-1 rounded-full">
+                      WAV Audio ({(result.fileSize / 1024).toFixed(1)} KB)
+                    </span>
+                  )}
+                  {result?.audioFormat === 'midi' && (
+                    <span className="bg-yellow-900/30 border border-yellow-500/40 px-2 py-1 rounded-full">
+                      MIDI Audio ({(result.fileSize / 1024).toFixed(1)} KB) - Limited browser support
+                    </span>
+                  )}
+                  {result?.audioFormat === 'placeholder' && (
+                    <span className="bg-red-900/30 border border-red-500/40 px-2 py-1 rounded-full">
+                      Audio Preview Available
+                    </span>
+                  )}
+                </div>
+
+                {/* Audio player */}
+                <audio controls src={audioUrl} className="w-full rounded-lg mb-3 bg-black" />
+                
+                {/* Download and playback controls */}
+                <div className="flex flex-row gap-4 justify-center">
+                  <a
+                    href={audioUrl}
+                    download={result?.audioFormat === 'midi' ? "sheet_music.mid" : "sheet_music.wav"}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-purple-700 to-purple-500 hover:from-purple-800 hover:to-purple-600 text-white shadow transition"
+                  >
+                    <Download className="h-5 w-5" />
+                    Download Audio
+                  </a>
+                </div>
+
+                {/* Tips if audio playback is problematic */}
+                {result?.audioFormat === 'midi' && (
+                  <div className="mt-4 p-3 text-xs text-yellow-300 bg-yellow-950/30 border border-yellow-800/30 rounded-lg">
+                    <strong>Note:</strong> MIDI files may not play directly in all browsers. 
+                    For best results, download the file and use a MIDI player application.
+                  </div>
+                )}
               </div>
             </div>
           )}
