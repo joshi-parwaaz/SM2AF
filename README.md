@@ -39,17 +39,68 @@ Edit
 
 ## 🛠️ **Setup Instructions**
 
-### 1. **Create Virtual Environment** (optional but recommended)
+### Option 1: Using Docker (Recommended)
+
+This project now includes Docker support for easy deployment of both backend and frontend:
+
+```bash
+# Build and start all services
+docker compose up -d
+
+# Access the application at http://localhost
+```
+
+See the [Docker Readme](README.Docker.md) for more details on the Docker setup.
+
+### Option 2: Automated Setup
+
+We provide an automated setup script that installs dependencies and configures the environment:
+
+```bash
+# Make the script executable
+chmod +x setup.sh
+
+# Run the setup script
+./setup.sh
+```
+
+### Option 3: Manual Setup
+
+#### 1. **Create Virtual Environment** (optional but recommended)
 
 ```bash
 python -m venv venv
 venv\Scripts\activate    # On Windows
 source venv/bin/activate # On Mac/Linux
-2. Install Dependencies
-bash
-Copy
-Edit
+```
+
+#### 2. Install Backend Dependencies
+```bash
 pip install -r requirements.txt
+```
+
+#### 3. Install SoundFont for Better Audio Quality
+```bash
+# Install SoundFont automatically
+python install_soundfont.py
+```
+
+#### 4. Start the Backend Server
+```bash
+python main.py
+```
+
+#### 5. Setup the Frontend
+```bash
+cd frontEnd
+npm install
+npm run dev
+```
+
+#### 6. Access the Web Interface
+Open your browser and navigate to the URL shown in the frontend terminal (typically http://localhost:8080)
+
+For detailed setup instructions and troubleshooting, see the [Setup Guide](SETUP.md).
 🚀 How to Use
 1. Capture or Upload Sheet Music Image
 You can either capture an image from your webcam or upload your own image.

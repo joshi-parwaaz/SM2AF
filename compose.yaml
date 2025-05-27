@@ -1,7 +1,30 @@
 services:
-  server:
+  backend:
     build:
       context: .
+      dockerfile: dockerfile.backend
     ports:
       - 8000:8000
+    volumes:
+      - ./uploads:/app/uploads
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontEnd
+      dockerfile: dockerfile.frontend
+    ports:
+      - 80:80
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
