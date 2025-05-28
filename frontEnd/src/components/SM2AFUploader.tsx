@@ -25,17 +25,11 @@ export default function SM2AFUploader() {
     }
   };
 
-  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('image/')) {
       setImage(file);
-
-      // call the backend api
-      const response = await postData(file);
-
-      console.log(response);
-
       setError(null);
     }
   };
@@ -87,75 +81,32 @@ export default function SM2AFUploader() {
 
   const handleSubmit = async () => {
     if (!image) return;
-    
+  
     setLoading(true);
     setAudioUrl(null);
     setError(null);
-    
+  
     try {
       const formData = new FormData();
       formData.append("image", image);
-      
-      // Call the backend API
-      // Determine API URL based on environment
-      const apiUrl = import.meta.env.PROD 
+  
+      const apiUrl = import.meta.env.PROD
         ? "/api/process-sheet-music"
         : "http://localhost:8000/process-sheet-music";
-      
-      console.log(`Submitting image to: ${apiUrl}`);  
+  
       const response = await fetch(apiUrl, {
         method: "POST",
         body: formData,
       });
-      
-      console.log('Response received from server');
-      const resultData = await response.json();
-      console.log('Response data:', resultData);
-      
-      // Always process audio data even if there's an error
-      let audioFormat = 'unknown';
-      let audioBlob;
-      
-      if (resultData.wav_data) {
-        console.log('Using WAV data for audio playback');
-        audioFormat = 'wav';
-        const byteString = atob(resultData.wav_data);
-        const arrayBuffer = new ArrayBuffer(byteString.length);
-        const uint8Array = new Uint8Array(arrayBuffer);
-        for (let i = 0; i < byteString.length; i++) {
-          uint8Array[i] = byteString.charCodeAt(i);
-        }
-        audioBlob = new Blob([uint8Array], { type: 'audio/wav' });
-        setAudioUrl(URL.createObjectURL(audioBlob));
-      } else if (resultData.midi_data) {
-        console.log('Using MIDI data for audio playback');
-        audioFormat = 'midi';
-        const byteString = atob(resultData.midi_data);
-        const arrayBuffer = new ArrayBuffer(byteString.length);
-        const uint8Array = new Uint8Array(arrayBuffer);
-        for (let i = 0; i < byteString.length; i++) {
-          uint8Array[i] = byteString.charCodeAt(i);
-        }
-        audioBlob = new Blob([uint8Array], { type: 'audio/midi' });
-        setAudioUrl(URL.createObjectURL(audioBlob));
+  
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
       } else {
-        console.log('No audio data received, using placeholder audio');
-        audioFormat = 'placeholder';
-        audioBlob = new Blob([new ArrayBuffer(1024)], { type: 'audio/wav' });
-        setAudioUrl(URL.createObjectURL(audioBlob));
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Conversion failed");
       }
-      
-      setResult({
-        ...resultData,
-        audioFormat,
-        fileSize: audioBlob ? audioBlob.size : 0
-      });
-
-      // Check for error after setting up audio
-      if (!response.ok || resultData.error) {
-        throw new Error(resultData.error || `Server error: ${response.status}`);
-      }
-      
     } catch (error) {
       console.error("Conversion error:", error);
       setError(error instanceof Error ? error.message : "Conversion failed. Please try again.");
@@ -287,57 +238,23 @@ export default function SM2AFUploader() {
 
           {/* Audio preview and download */}
           {audioUrl && (
-            <div className="transition-all animate-in fade-in">
-              <h2 className="text-center text-lg font-semibold text-green-400 mb-2">
-                {error ? "Conversion Failed - Preview Available" : "Conversion Complete!"}
-              </h2>
-              
-              {/* Audio format and conversion details */}
-              <div className="text-center space-y-2 mb-4">
-                {/* Format badge */}
-                <div className="text-xs text-purple-300">
-                  {result?.audioFormat === 'wav' && (
-                    <span className="bg-green-900/30 border border-green-500/40 px-2 py-1 rounded-full">
-                      WAV Audio ({(result.fileSize / 1024).toFixed(1)} KB)
-                    </span>
-                  )}
-                  {result?.audioFormat === 'midi' && (
-                    <span className="bg-yellow-900/30 border border-yellow-500/40 px-2 py-1 rounded-full">
-                      MIDI Audio ({(result.fileSize / 1024).toFixed(1)} KB) - Limited browser support
-                    </span>
-                  )}
-                  {result?.audioFormat === 'placeholder' && (
-                    <span className="bg-red-900/30 border border-red-500/40 px-2 py-1 rounded-full">
-                      Audio Preview Available
-                    </span>
-                  )}
-                </div>
-
-                {/* Audio player */}
-                <audio controls src={audioUrl} className="w-full rounded-lg mb-3 bg-black" />
-                
-                {/* Download and playback controls */}
-                <div className="flex flex-row gap-4 justify-center">
-                  <a
-                    href={audioUrl}
-                    download={result?.audioFormat === 'midi' ? "sheet_music.mid" : "sheet_music.wav"}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-purple-700 to-purple-500 hover:from-purple-800 hover:to-purple-600 text-white shadow transition"
-                  >
-                    <Download className="h-5 w-5" />
-                    Download Audio
-                  </a>
-                </div>
-
-                {/* Tips if audio playback is problematic */}
-                {result?.audioFormat === 'midi' && (
-                  <div className="mt-4 p-3 text-xs text-yellow-300 bg-yellow-950/30 border border-yellow-800/30 rounded-lg">
-                    <strong>Note:</strong> MIDI files may not play directly in all browsers. 
-                    For best results, download the file and use a MIDI player application.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+  <div className="transition-all animate-in fade-in">
+    <h2 className="text-center text-lg font-semibold text-green-400 mb-2">
+      {error ? "Conversion Failed" : "Conversion Complete!"}
+    </h2>
+    <div className="text-center space-y-2 mb-4">
+      <audio controls src={audioUrl} className="w-full rounded-lg mb-3 bg-black" />
+      <a
+        href={audioUrl}
+        download="sheet_music.mp3"
+        className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-purple-700 to-purple-500 hover:from-purple-800 hover:to-purple-600 text-white shadow transition"
+      >
+        <Download className="h-5 w-5" />
+        Download MP3
+      </a>
+    </div>
+  </div>
+)}
         </CardContent>
       </Card>
     </div>
