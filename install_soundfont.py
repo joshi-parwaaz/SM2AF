@@ -15,7 +15,6 @@ from pathlib import Path
 import urllib.request
 import tempfile
 from pydub import AudioSegment
-from midi2audio import FluidSynth
 
 # URLs for SoundFont files
 SOUNDFONT_URLS = [
@@ -32,9 +31,9 @@ SOUNDFONT_PATHS = {
         "/usr/local/share/sounds/sf2/FluidR3_GM.sf2",
         "/opt/homebrew/share/sounds/sf2/FluidR3_GM.sf2",
     ],
-    "win32": [
+"win32": [
         r"C:\soundfonts\FluidR3_GM.sf2",
-        os.path.join(os.path.expanduser("~"), "soundfonts", "FluidR3_GM.sf2"),
+        os.path.join(os.getenv("APPDATA"), "soundfonts", "FluidR3_GM.sf2"),
         r"C:\Users\varun\Downloads\SM2AF\soundfonts\FluidR3_GM.sf2",
     ],
 }
@@ -48,26 +47,26 @@ INSTALL_PATHS = {
 def check_fluidsynth():
     """Check if FluidSynth is installed."""
     try:
-        # Use -ni (no-interactive) and -version, but send quit command to exit gracefully
+        # Use a simple command that doesn't try to load default soundfonts
         process = subprocess.Popen(
-            ["fluidsynth", "-ni", "-version"],
-            stdin=subprocess.PIPE,
+            ["fluidsynth", "-version"],  # Changed to -version instead of -ni -version
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
         )
         
-        # Send quit command and close stdin to make fluidsynth exit
-        stdout, stderr = process.communicate(input="quit\n", timeout=10)
+        stdout, stderr = process.communicate(timeout=10)
+        combined_output = stdout + stderr
         
-        if "FluidSynth runtime version" in stdout or "FluidSynth runtime version" in stderr:
-            version_line = next((line for line in (stdout + stderr).split('\n') 
+        if "FluidSynth runtime version" in combined_output:
+            version_line = next((line for line in combined_output.split('\n') 
                                if "FluidSynth runtime version" in line), "")
             print(f"FluidSynth is installed: {version_line.strip()}")
             return True
         else:
             print("FluidSynth found but version info not detected")
+            print(f"Output: {combined_output}")
             return False
             
     except subprocess.TimeoutExpired:
@@ -77,7 +76,7 @@ def check_fluidsynth():
         return False
     except FileNotFoundError:
         print("FluidSynth not found in PATH")
-        print("Ensure FluidSynth is installed at C:\\ProgramData\\chocolatey\\bin\\fluidsynth.exe.")
+        print("Ensure FluidSynth is installed and accessible.")
         print("Current PATH:", os.environ.get("PATH"))
         return False
     except Exception as e:
@@ -178,34 +177,145 @@ def get_soundfont_path():
     if system not in SOUNDFONT_PATHS:
         raise ValueError(f"Unsupported system: {system}")
 
-    # Debug: print all checked paths
     for path in SOUNDFONT_PATHS[system]:
         print(f"Checking SoundFont at: {path}")
         if os.path.exists(path):
+            path = path.replace('\\', '/')  # Convert backslashes to forward slashes
             print(f"Found SoundFont at: {path}")
             return path
 
-    # Also check local project folder (relative to script)
     local_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "soundfonts")
     local_path = os.path.join(local_dir, "FluidR3_GM.sf2")
     print(f"Checking local project SoundFont at: {local_path}")
     if os.path.exists(local_path):
+        local_path = local_path.replace('\\', '/')  # Convert backslashes to forward slashes
         print(f"Found SoundFont at: {local_path}")
         return local_path
 
     raise FileNotFoundError("SoundFont not found. Please run the installation script or place FluidR3_GM.sf2 manually.")
 
 
-
 def midi_to_mp3(midi_path, mp3_path):
-    """Convert MIDI to MP3 using midi2audio and pydub."""
-    soundfont_path = get_soundfont_path()
-    wav_path = midi_path.replace('.mid', '.wav')
-    fs = FluidSynth(soundfont_path)
-    fs.midi_to_audio(midi_path, wav_path)
-    sound = AudioSegment.from_wav(wav_path)
-    sound.export(mp3_path, format="mp3")
-    os.remove(wav_path)
+    """Convert MIDI to MP3 using only FluidSynth subprocess and pydub."""
+    try:
+        soundfont_path = get_soundfont_path()
+        print(f"Using SoundFont at: {soundfont_path}")
+        
+        # Create WAV file path
+        wav_path = midi_path.replace('.mid', '.wav')
+        
+        # Use direct FluidSynth subprocess call - skip midi2audio entirely
+        print("Converting MIDI to WAV using direct FluidSynth command...")
+        
+        fluidsynth_cmd = [
+            "fluidsynth",
+            "-ni",  # No interactive mode
+            "-g", "0.5",  # Gain
+            "-F", wav_path,  # Output WAV file
+            soundfont_path,  # SoundFont file
+            midi_path  # Input MIDI file
+        ]
+        
+        print(f"Running FluidSynth command: {' '.join(fluidsynth_cmd)}")
+        
+        # Use Popen to better control the process
+        process = subprocess.Popen(
+            fluidsynth_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        )
+        
+        # Send quit command and wait for completion
+        try:
+            stdout, stderr = process.communicate(input="quit\n", timeout=60)
+        except subprocess.TimeoutExpired:
+            print("FluidSynth process timed out, terminating...")
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            raise Exception("FluidSynth conversion timed out")
+        
+        # Check result
+        if process.returncode not in [0, -15]:  # 0 = success, -15 = SIGTERM (normal when we send quit)
+            print(f"FluidSynth stderr: {stderr}")
+            print(f"FluidSynth stdout: {stdout}")
+            if not os.path.exists(wav_path) or os.path.getsize(wav_path) == 0:
+                raise Exception(f"FluidSynth failed with return code {process.returncode}")
+        
+        # Check if WAV file was created and has content
+        if not os.path.exists(wav_path):
+            raise Exception(f"WAV file was not created: {wav_path}")
+            
+        if os.path.getsize(wav_path) == 0:
+            raise Exception(f"WAV file is empty: {wav_path}")
+            
+        print(f"WAV file created successfully: {wav_path} ({os.path.getsize(wav_path)} bytes)")
+        
+        # Convert WAV to MP3 using pydub
+        print(f"Converting WAV to MP3: {wav_path} -> {mp3_path}")
+        try:
+            sound = AudioSegment.from_wav(wav_path)
+            sound.export(mp3_path, format="mp3")
+            print(f"Successfully converted WAV to MP3: {mp3_path}")
+        except Exception as e:
+            raise Exception(f"WAV to MP3 conversion failed: {str(e)}")
+        
+        # Clean up WAV file
+        try:
+            if os.path.exists(wav_path):
+                os.remove(wav_path)
+                print(f"Cleaned up temporary WAV file: {wav_path}")
+        except Exception as e:
+            print(f"Warning: Could not remove temporary WAV file {wav_path}: {e}")
+        
+        # Verify MP3 file was created
+        if not os.path.exists(mp3_path):
+            raise Exception(f"MP3 file was not created: {mp3_path}")
+            
+        if os.path.getsize(mp3_path) == 0:
+            raise Exception(f"MP3 file is empty: {mp3_path}")
+            
+        print(f"MP3 conversion completed successfully: {mp3_path} ({os.path.getsize(mp3_path)} bytes)")
+        
+    except Exception as e:
+        # Clean up any temporary files on error
+        wav_path = midi_path.replace('.mid', '.wav')
+        for temp_file in [wav_path]:
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except:
+                pass
+        raise Exception(f"MIDI to MP3 conversion failed: {str(e)}")
+
+
+def test_midi_conversion():
+    """Test function to verify MIDI to MP3 conversion works."""
+    # This is a simple test function you can call to verify the conversion works
+    import tempfile
+    
+    # Create a simple test MIDI file (you'd need to have a real MIDI file for testing)
+    test_midi = "test.mid"  # Replace with path to a real MIDI file
+    test_mp3 = "test_output.mp3"
+    
+    if os.path.exists(test_midi):
+        try:
+            midi_to_mp3(test_midi, test_mp3)
+            print("Test conversion successful!")
+            if os.path.exists(test_mp3):
+                print(f"MP3 file created: {test_mp3}")
+                # Clean up test file
+                os.remove(test_mp3)
+        except Exception as e:
+            print(f"Test conversion failed: {e}")
+    else:
+        print(f"Test MIDI file not found: {test_midi}")
+
 
 def main():
     """Main function."""
